@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absen - SMKN 1 Gedangan</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5e6ca, #fdf0d8);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 550px; margin: 0 auto; }
+        .card {
+            background: white;
+            border-radius: 30px;
+            padding: 30px;
+            border: 2px solid #ffd700;
+        }
+        h1 { color: #8B4513; text-align: center; margin-bottom: 20px; }
+        .info {
+            background: #fff8e7;
+            padding: 15px;
+            border-radius: 20px;
+            margin: 15px 0;
+        }
+        .foto-area {
+            border: 2px dashed #ffd700;
+            border-radius: 20px;
+            padding: 20px;
+            text-align: center;
+            margin: 15px 0;
+            cursor: pointer;
+            background: #fffef7;
+        }
+        #preview { max-width: 200px; margin-top: 10px; border-radius: 15px; display: none; }
+        #video { width: 100%; border-radius: 15px; display: none; margin-top: 10px; }
+        .gps-info {
+            background: #e8f5e9;
+            padding: 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            margin: 15px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #ffd700, #daa520);
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .aturan {
+            font-size: 11px;
+            color: #a0621a;
+            margin-top: 15px;
+            text-align: center;
+            border-top: 1px solid #ffd700;
+            padding-top: 15px;
+        }
+        .capture-btn {
+            background: #daa520;
+            padding: 8px 20px;
+            border: none;
+            border-radius: 25px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>📜 ABSEN KERAJAAN</h1>
+            
+            <div class="info">
+                <p>⚔️ <strong>{{ nama }}</strong> ⚔️</p>
+                <p>🏫 {{ kelas }} 🏫</p>
+                <p>⏰ <span id="waktu">{{ jam }}</span></p>
+                <p>📅 <span id="tanggal"></span></p>
+            </div>
+            
+            <div class="foto-area" id="fotoArea" onclick="mulaiKamera()">
+                📸 KLIK UNTUK AMBIL FOTO (WAJIB)
+                <video id="video" autoplay></video>
+                <canvas id="canvas" style="display:none;"></canvas>
+                <img id="preview">
+            </div>
+            <div id="captureDiv" style="display:none; text-align:center;">
+                <button class="capture-btn" onclick="ambilFoto()">📸 AMBIL FOTO</button>
+            </div>
+            
+            <div class="gps-info" id="gpsInfo">🌍 Mendapatkan lokasi GPS...</div>
+            
+            <button id="btnAbsen" onclick="simpanAbsen()" disabled>📜 KIRIM ABSEN KE ISTANA</button>
+            
+            <div class="aturan">
+                ⚔️ ATURAN KERAJAAN ⚔️<br>
+                • Wajib foto selfie<br>
+                • Wajib berada di SMKN 1 Gedangan Malang<br>
+                • Jam 07:00-08:00 → HADIR<br>
+                • Jam 08:00-10:00 → TERLAMBAT (tetap dianggap hadir)<br>
+                • Lewat Jam 10:00 → ALPA (tidak bisa absen)
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let fotoBase64 = null;
+        let latitude = null;
+        let longitude = null;
+        let stream = null;
+        
+        // Set tanggal
+        document.getElementById('tanggal').innerText = new Date().toISOString().split('T')[0];
+        
+        // Update waktu realtime
+        setInterval(() => {
+            let d = new Date();
+            document.getElementById('waktu').innerHTML = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+        }, 1000);
+        
+        // Ambil lokasi GPS
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        latitude = pos.coords.latitude;
+                        longitude = pos.coords.longitude;
+                        document.getElementById('gpsInfo').innerHTML = `📍 Lokasi ditemukan!<br>Lat: ${latitude.toFixed(6)}, Lon: ${longitude.toFixed(6)}<br>✅ Anda di lingkungan Kerajaan`;
+                        document.getElementById('gpsInfo').style.background = "#e8f5e9";
+                        cekSiap();
+                    },
+                    (err) => {
+                        document.getElementById('gpsInfo').innerHTML = "❌ Gagal dapat lokasi! Pastikan GPS menyala.";
+                        document.getElementById('gpsInfo').style.background = "#ffebee";
+                    }
+                );
+            } else {
+                document.getElementById('gpsInfo').innerHTML = "❌ Browser tidak support GPS";
+            }
+        }
+        
+        // Mulai kamera
+        async function mulaiKamera() {
+            if (!stream) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    let video = document.getElementById('video');
+                    video.srcObject = stream;
+                    video.style.display = 'block';
+                    document.getElementById('fotoArea').innerHTML = '<div>📸 Siapkan wajahmu!</div><video id="video" style="width:100%; border-radius:15px;" autoplay></video>';
+                    document.getElementById('captureDiv').style.display = 'block';
+                } catch(e) {
+                    alert('Gagal akses kamera: ' + e.message);
+                }
+            }
+        }
+        
+        // Ambil foto
+        function ambilFoto() {
+            let video = document.getElementById('video');
+            let canvas = document.getElementById('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            let ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            fotoBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            let preview = document.getElementById('preview');
+            preview.src = fotoBase64;
+            preview.style.display = 'block';
+            
+            // Matikan kamera
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+                stream = null;
+            }
+            document.getElementById('video').style.display = 'none';
+            document.getElementById('captureDiv').style.display = 'none';
+            document.getElementById('fotoArea').innerHTML = '<div>✅ Foto berhasil diambil! ✅</div><img id="preview" style="max-width:200px; border-radius:15px; margin-top:10px;">';
+            document.getElementById('preview').src = fotoBase64;
+            cekSiap();
+        }
+        
+        function cekSiap() {
+            let btn = document.getElementById('btnAbsen');
+            btn.disabled = !(fotoBase64 && latitude);
+        }
+        
+        async function simpanAbsen() {
+            let btn = document.getElementById('btnAbsen');
+            btn.disabled = true;
+            btn.innerText = '⚔️ MENGIRIM KE ISTANA...';
+            
+            try {
+                let res = await fetch('/absen', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        foto: fotoBase64,
+                        lat: latitude,
+                        lon: longitude
+                    })
+                });
+                let result = await res.json();
+                if (result.status === 'success') {
+                    alert(result.message);
+                    window.location.href = '/dashboard';
+                } else {
+                    alert('Error: ' + result.message);
+                    btn.disabled = false;
+                    btn.innerText = '📜 KIRIM ABSEN KE ISTANA';
+                }
+            } catch(e) {
+                alert('Gagal mengirim: ' + e.message);
+                btn.disabled = false;
+                btn.innerText = '📜 KIRIM ABSEN KE ISTANA';
+            }
+        }
+        
+        // Mulai
+        getLocation();
+    </script>
+</body>
+</html>
